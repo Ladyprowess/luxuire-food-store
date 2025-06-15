@@ -13,6 +13,7 @@ import { OrdersProvider } from '@/contexts/OrdersContext';
 import { ReferralProvider } from '@/contexts/ReferralContext';
 import { PromoProvider } from '@/contexts/PromoContext';
 import { PaystackProvider } from '@/contexts/PaystackContext';
+import { WalletProvider } from '@/contexts/WalletContext';
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -45,36 +46,40 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <PaystackProvider>
-        <ReferralProvider>
-          <PromoProvider>
-            <CartProvider>
-              <LocationProvider>
-                <FavoritesProvider>
-                  <OrdersProvider>
-                    <Stack screenOptions={{ headerShown: false }}>
-                      <Stack.Screen name="auth" />
-                      <Stack.Screen name="onboarding" />
-                      <Stack.Screen name="(tabs)" />
-                      <Stack.Screen name="location-picker" />
-                      <Stack.Screen name="notifications" />
-                      <Stack.Screen name="help-center" />
-                      <Stack.Screen name="product-details" />
-                      <Stack.Screen name="checkout" />
-                      <Stack.Screen name="custom-basket" />
-                      <Stack.Screen name="favorites" />
-                      <Stack.Screen name="promo-codes" />
-                      <Stack.Screen name="referral" />
-                      <Stack.Screen name="order-tracking" />
-                      <Stack.Screen name="ai-reminder" />
-                      <Stack.Screen name="+not-found" />
-                    </Stack>
-                    <StatusBar style="auto" />
-                  </OrdersProvider>
-                </FavoritesProvider>
-              </LocationProvider>
-            </CartProvider>
-          </PromoProvider>
-        </ReferralProvider>
+        <WalletProvider>
+          <ReferralProvider>
+            <PromoProvider>
+              <CartProvider>
+                <LocationProvider>
+                  <FavoritesProvider>
+                    <OrdersProvider>
+                      <Stack screenOptions={{ headerShown: false }}>
+                        <Stack.Screen name="auth" />
+                        <Stack.Screen name="onboarding" />
+                        <Stack.Screen name="(tabs)" />
+                        <Stack.Screen name="location-picker" />
+                        <Stack.Screen name="notifications" />
+                        <Stack.Screen name="help-center" />
+                        <Stack.Screen name="product-details" />
+                        <Stack.Screen name="checkout" />
+                        <Stack.Screen name="custom-basket" />
+                        <Stack.Screen name="favorites" />
+                        <Stack.Screen name="promo-codes" />
+                        <Stack.Screen name="referral" />
+                        <Stack.Screen name="order-tracking" />
+                        <Stack.Screen name="ai-reminder" />
+                        <Stack.Screen name="wallet" />
+                        <Stack.Screen name="pay-for-me" />
+                        <Stack.Screen name="+not-found" />
+                      </Stack>
+                      <StatusBar style="auto" />
+                    </OrdersProvider>
+                  </FavoritesProvider>
+                </LocationProvider>
+              </CartProvider>
+            </PromoProvider>
+          </ReferralProvider>
+        </WalletProvider>
       </PaystackProvider>
     </AuthProvider>
   );

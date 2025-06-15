@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '@/types';
-import { Linking } from 'react-native';
 
 interface AuthContextType {
   user: User | null;
@@ -14,30 +13,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Email notification function
-const sendEmailNotification = async (type: string, data: any) => {
-  const subject = encodeURIComponent(`Luxuire ${type} Notification`);
-  let body = '';
-  
-  switch (type) {
-    case 'Registration':
-      body = encodeURIComponent(`New user registration:%0D%0A%0D%0AName: ${data.name}%0D%0AEmail: ${data.email}%0D%0APhone: ${data.phone}%0D%0ARegistration Time: ${new Date().toLocaleString()}`);
-      break;
-    case 'Login':
-      body = encodeURIComponent(`User login:%0D%0A%0D%0AEmail/Phone: ${data.identifier}%0D%0ALogin Time: ${new Date().toLocaleString()}`);
-      break;
-    case 'Profile Update':
-      body = encodeURIComponent(`Profile updated:%0D%0A%0D%0AUser: ${data.name}%0D%0AEmail: ${data.email}%0D%0APhone: ${data.phone}%0D%0AUpdate Time: ${new Date().toLocaleString()}`);
-      break;
-  }
-  
-  const emailUrl = `mailto:luxuireng@gmail.com?cc=support@luxuire.com&subject=${subject}&body=${body}`;
-  
-  // In a real app, you would send this to your backend API
-  // For now, we'll just log it or optionally open email client
-  console.log('Email notification:', emailUrl);
-};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -75,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false; // User not found
       }
       
-      // Create user data with only the information they registered with
+      // Create user data with all stored information
       const userData: User = {
         id: existingUser.id,
         name: existingUser.name,
@@ -84,13 +59,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profileImage: existingUser.profileImage,
         addresses: existingUser.addresses || [],
         defaultAddressId: existingUser.defaultAddressId,
+        preferredPaymentMethod: existingUser.preferredPaymentMethod || 'online',
+        walletBalance: existingUser.walletBalance || 0,
       };
 
       await AsyncStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
-      
-      // Send email notification
-      await sendEmailNotification('Login', { identifier: email });
       
       return true;
     } catch (error) {
@@ -114,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false; // User not found
       }
       
-      // Create user data with only the information they registered with
+      // Create user data with all stored information
       const userData: User = {
         id: existingUser.id,
         name: existingUser.name,
@@ -123,13 +97,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profileImage: existingUser.profileImage,
         addresses: existingUser.addresses || [],
         defaultAddressId: existingUser.defaultAddressId,
+        preferredPaymentMethod: existingUser.preferredPaymentMethod || 'online',
+        walletBalance: existingUser.walletBalance || 0,
       };
 
       await AsyncStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
-      
-      // Send email notification
-      await sendEmailNotification('Login', { identifier: phone });
       
       return true;
     } catch (error) {
@@ -145,13 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       const userId = Date.now().toString();
       
-      // Create user data with only the information provided during registration
+      // Create user data with default payment method and wallet
       const userData: User = {
         id: userId,
         name,
         email,
         phone,
         addresses: [],
+        preferredPaymentMethod: 'online',
+        walletBalance: 0,
       };
 
       // Save to registered users list (simulate database)
@@ -163,9 +138,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Set as current user
       await AsyncStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
-      
-      // Send email notification
-      await sendEmailNotification('Registration', { name, email, phone });
       
       return true;
     } catch (error) {
@@ -201,9 +173,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
-      
-      // Send email notification
-      await sendEmailNotification('Profile Update', updatedUser);
     } catch (error) {
       console.error('Update user error:', error);
     }
@@ -227,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 }

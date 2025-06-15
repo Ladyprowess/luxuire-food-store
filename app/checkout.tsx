@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowLeft, MapPin, CreditCard, Clock, MessageSquare, CircleCheck as CheckCircle, Tag } from 'lucide-react-native';
+import { ArrowLeft, MapPin, CreditCard, Clock, MessageSquare, CircleCheck as CheckCircle, Tag, Share2, Wallet } from 'lucide-react-native';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { useOrders } from '@/contexts/OrdersContext';
 import { usePromo } from '@/contexts/PromoContext';
 import { usePaystack } from '@/contexts/PaystackContext';
+import { useWallet } from '@/contexts/WalletContext';
 
 const deliveryTimes = [
   { id: 'asap', label: 'ASAP (2-3 hours)', fee: 500 },
@@ -16,26 +17,39 @@ const deliveryTimes = [
   { id: 'tomorrow', label: 'Tomorrow Morning', fee: 200 },
 ];
 
-const paymentMethods = [
-  { id: 'paystack', label: 'Paystack (Card/Bank)', subtitle: 'Secure payment via Paystack' },
-  { id: 'transfer', label: 'Bank Transfer', subtitle: 'Direct bank transfer' },
-  { id: 'ussd', label: 'USSD Payment', subtitle: 'Pay with your phone' },
-  { id: 'cash', label: 'Cash on Delivery', subtitle: 'Pay when you receive your order' },
-];
+const getPaymentMethods = (isLagos: boolean, walletBalance: number) => {
+  const methods = [
+    { 
+      id: 'online', 
+      label: 'Online Payment', 
+      subtitle: 'Pay securely with card via Paystack',
+      available: true 
+    },
+    { 
+      id: 'wallet', 
+      label: 'Wallet Payment', 
+      subtitle: `Pay from wallet (₦${walletBalance.toLocaleString()} available)`,
+      available: true 
+    },
+  ];
+
+  return methods;
+};
 
 export default function CheckoutScreen() {
+  const { user } = useAuth();
   const [selectedDeliveryTime, setSelectedDeliveryTime] = useState('asap');
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('paystack');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(user?.preferredPaymentMethod || 'online');
   const [generalRequest, setGeneralRequest] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   const { items, getCartTotal, clearCart } = useCart();
-  const { user } = useAuth();
-  const { currentLocation, getDeliveryFee, getDeliveryTime } = useLocation();
+  const { currentLocation, getDeliveryFee, getDeliveryTime, isWithinLagos } = useLocation();
   const { addOrder } = useOrders();
   const { appliedPromo, applyPromoCode, removePromoCode } = usePromo();
   const { initializePayment } = usePaystack();
+  const { balance: walletBalance, deductFunds } = useWallet();
 
   if (items.length === 0) {
     return (
@@ -73,6 +87,9 @@ export default function CheckoutScreen() {
 
   const defaultAddress = user?.addresses?.find(addr => addr.id === user.defaultAddressId) || user?.addresses?.[0];
   const deliveryTime = defaultAddress ? getDeliveryTime(defaultAddress) : '2-4 hours';
+  const isLagos = defaultAddress ? isWithinLagos(defaultAddress) : false;
+  
+  const paymentMethods = getPaymentMethods(isLagos, walletBalance);
 
   const handleApplyPromo = async () => {
     if (!promoCode.trim()) return;
@@ -88,18 +105,49 @@ export default function CheckoutScreen() {
     }
   };
 
+  const generatePayForMeLink = () => {
+    const orderDetails = {
+      items: items.length,
+      total: total,
+      customerName: user?.name || 'Customer',
+      orderId: `temp_${Date.now()}`,
+    };
+    
+    const payForMeUrl = `https://luxuire.com/pay-for-me?order=${encodeURIComponent(JSON.stringify(orderDetails))}`;
+    return payForMeUrl;
+  };
+
+  const handleSharePayForMe = async () => {
+    try {
+      const payForMeLink = generatePayForMeLink();
+      const message = `🛒 Help me pay for my Luxuire order!\n\nOrder Total: ₦${total.toLocaleString()}\nItems: ${items.length} items\n\nClick here to pay for me: ${payForMeLink}\n\nThank you! 🙏`;
+      
+      await Share.share({
+        message,
+        title: 'Pay for my Luxuire order',
+      });
+    } catch (error) {
+      console.error('Error sharing pay-for-me link:', error);
+    }
+  };
+
   const handlePaystackPayment = () => {
     if (!user?.email) {
       Alert.alert('Error', 'Email is required for payment. Please update your profile.');
       return;
     }
 
+    // Generate temporary order ID for payment tracking
+    const tempOrderId = `temp_${Date.now()}`;
+
     initializePayment(
       total,
       user.email,
-      () => {
-        // Payment successful
-        processOrder();
+      tempOrderId,
+      user.id,
+      async (reference: string) => {
+        // Payment successful and verified
+        await processOrder(reference);
       },
       () => {
         // Payment cancelled
@@ -109,19 +157,57 @@ export default function CheckoutScreen() {
     );
   };
 
-  const processOrder = async () => {
+  const handleWalletPayment = async () => {
+    if (walletBalance < total) {
+      Alert.alert(
+        'Insufficient Wallet Balance',
+        `Your wallet balance (₦${walletBalance.toLocaleString()}) is insufficient for this order (₦${total.toLocaleString()}). Please fund your wallet or choose another payment method.`,
+        [
+          { text: 'Fund Wallet', onPress: () => router.push('/wallet') },
+          { text: 'Choose Other Method', style: 'cancel' }
+        ]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Confirm Wallet Payment',
+      `Pay ₦${total.toLocaleString()} from your wallet?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Pay Now',
+          onPress: async () => {
+            const success = await deductFunds(total, `Order payment - ${items.length} items`);
+            if (success) {
+              await processOrder();
+            } else {
+              Alert.alert('Error', 'Failed to process wallet payment. Please try again.');
+              setIsProcessing(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const processOrder = async (paymentReference?: string) => {
     try {
-      // Create order
+      // Create order with pay-for-me link
+      const payForMeLink = generatePayForMeLink();
+      
       const orderId = await addOrder(
         items,
         defaultAddress!,
         selectedPaymentMethod,
-        generalRequest
+        generalRequest,
+        payForMeLink,
+        paymentReference
       );
       
       Alert.alert(
         'Order Placed Successfully!',
-        `Your order #${orderId} has been confirmed. Our agent will start shopping for your items shortly.`,
+        `Your order #${orderId} has been confirmed. ${paymentReference ? 'Payment verified successfully.' : ''} Our agent will start shopping for your items shortly.`,
         [
           {
             text: 'Track Order',
@@ -162,11 +248,10 @@ export default function CheckoutScreen() {
     setIsProcessing(true);
 
     try {
-      if (selectedPaymentMethod === 'paystack') {
+      if (selectedPaymentMethod === 'online') {
         handlePaystackPayment();
-      } else {
-        // For other payment methods, process order directly
-        await processOrder();
+      } else if (selectedPaymentMethod === 'wallet') {
+        await handleWalletPayment();
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to place order. Please try again.');
@@ -217,7 +302,7 @@ export default function CheckoutScreen() {
         </View>
 
         {/* Delivery Time (only for Lagos) */}
-        {defaultAddress && getDeliveryFee(defaultAddress) === 2000 && (
+        {defaultAddress && isLagos && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Clock size={20} color="#B3C33E" strokeWidth={2} />
@@ -308,31 +393,73 @@ export default function CheckoutScreen() {
               key={method.id}
               style={[
                 styles.optionCard,
-                selectedPaymentMethod === method.id && styles.optionCardSelected
+                selectedPaymentMethod === method.id && styles.optionCardSelected,
+                !method.available && styles.optionCardDisabled
               ]}
-              onPress={() => setSelectedPaymentMethod(method.id)}
+              onPress={() => method.available && setSelectedPaymentMethod(method.id)}
+              disabled={!method.available}
             >
               <View style={styles.optionInfo}>
                 <Text style={[
                   styles.optionLabel,
-                  selectedPaymentMethod === method.id && styles.optionLabelSelected
+                  selectedPaymentMethod === method.id && styles.optionLabelSelected,
+                  !method.available && styles.optionLabelDisabled
                 ]}>
                   {method.label}
                 </Text>
                 <Text style={[
                   styles.optionSubtitle,
-                  selectedPaymentMethod === method.id && styles.optionSubtitleSelected
+                  selectedPaymentMethod === method.id && styles.optionSubtitleSelected,
+                  !method.available && styles.optionSubtitleDisabled
                 ]}>
                   {method.subtitle}
                 </Text>
               </View>
               <View style={[
                 styles.radioButton,
-                selectedPaymentMethod === method.id && styles.radioButtonSelected
+                selectedPaymentMethod === method.id && styles.radioButtonSelected,
+                !method.available && styles.radioButtonDisabled
               ]} />
             </TouchableOpacity>
           ))}
+
+          {/* Pay for Me Option */}
+          <View style={styles.payForMeSection}>
+            <Text style={styles.payForMeTitle}>Need someone to pay for you?</Text>
+            <TouchableOpacity 
+              style={styles.payForMeButton}
+              onPress={handleSharePayForMe}
+            >
+              <Share2 size={16} color="#B3C33E" strokeWidth={2} />
+              <Text style={styles.payForMeButtonText}>Share Pay-for-Me Link</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Wallet Balance Info */}
+        {selectedPaymentMethod === 'wallet' && (
+          <View style={styles.section}>
+            <View style={styles.walletInfoCard}>
+              <Wallet size={20} color="#B3C33E" strokeWidth={2} />
+              <View style={styles.walletInfo}>
+                <Text style={styles.walletBalanceText}>
+                  Wallet Balance: ₦{walletBalance.toLocaleString()}
+                </Text>
+                {walletBalance < total && (
+                  <Text style={styles.insufficientText}>
+                    Insufficient balance. Need ₦{(total - walletBalance).toLocaleString()} more.
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity 
+                style={styles.fundWalletButton}
+                onPress={() => router.push('/wallet')}
+              >
+                <Text style={styles.fundWalletText}>Fund Wallet</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* General Request */}
         <View style={styles.section}>
@@ -364,7 +491,7 @@ export default function CheckoutScreen() {
               <Text style={styles.summaryLabel}>Base Delivery Fee</Text>
               <Text style={styles.summaryValue}>₦{baseDeliveryFee.toLocaleString()}</Text>
             </View>
-            {defaultAddress && getDeliveryFee(defaultAddress) === 2000 && (
+            {defaultAddress && isLagos && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Delivery Time Fee</Text>
                 <Text style={styles.summaryValue}>₦{deliveryTimeFee.toLocaleString()}</Text>
@@ -399,15 +526,19 @@ export default function CheckoutScreen() {
           <Text style={styles.infoText}>• Our agent will contact you if any item is unavailable</Text>
           <Text style={styles.infoText}>• Lagos delivery: 3-7 hours | Outside Lagos: 4-7 days</Text>
           <Text style={styles.infoText}>• Service charge: 1% of order total</Text>
+          <Text style={styles.infoText}>• All payments are verified for security</Text>
         </View>
       </ScrollView>
 
       {/* Place Order Button */}
       <View style={styles.footer}>
         <TouchableOpacity 
-          style={[styles.placeOrderButton, isProcessing && styles.placeOrderButtonDisabled]}
+          style={[
+            styles.placeOrderButton, 
+            (isProcessing || (selectedPaymentMethod === 'wallet' && walletBalance < total)) && styles.placeOrderButtonDisabled
+          ]}
           onPress={handlePlaceOrder}
-          disabled={isProcessing}
+          disabled={isProcessing || (selectedPaymentMethod === 'wallet' && walletBalance < total)}
         >
           <CheckCircle size={20} color="#FFFFFF" strokeWidth={2} />
           <Text style={styles.placeOrderButtonText}>
@@ -516,6 +647,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F7E6',
     borderColor: '#B3C33E',
   },
+  optionCardDisabled: {
+    opacity: 0.5,
+  },
   optionInfo: {
     flex: 1,
   },
@@ -527,6 +661,9 @@ const styles = StyleSheet.create({
   },
   optionLabelSelected: {
     color: '#7A9C2A',
+  },
+  optionLabelDisabled: {
+    color: '#999999',
   },
   optionFee: {
     fontFamily: 'Inter-Regular',
@@ -544,6 +681,9 @@ const styles = StyleSheet.create({
   optionSubtitleSelected: {
     color: '#7A9C2A',
   },
+  optionSubtitleDisabled: {
+    color: '#999999',
+  },
   radioButton: {
     width: 20,
     height: 20,
@@ -555,6 +695,75 @@ const styles = StyleSheet.create({
   radioButtonSelected: {
     borderColor: '#B3C33E',
     backgroundColor: '#B3C33E',
+  },
+  radioButtonDisabled: {
+    borderColor: '#CCCCCC',
+    backgroundColor: '#F5F5F5',
+  },
+  payForMeSection: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#F0F7E6',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#B3C33E',
+  },
+  payForMeTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#7A9C2A',
+    marginBottom: 8,
+  },
+  payForMeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#B3C33E',
+  },
+  payForMeButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#7A9C2A',
+    marginLeft: 8,
+  },
+  walletInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F7E6',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#B3C33E',
+  },
+  walletInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  walletBalanceText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#7A9C2A',
+  },
+  insufficientText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#FF4444',
+    marginTop: 2,
+  },
+  fundWalletButton: {
+    backgroundColor: '#B3C33E',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  fundWalletText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: '#FFFFFF',
   },
   promoInputContainer: {
     flexDirection: 'row',

@@ -6,6 +6,8 @@ export interface User {
   profileImage?: string;
   addresses: Address[];
   defaultAddressId?: string;
+  preferredPaymentMethod?: 'online' | 'cash' | 'wallet';
+  walletBalance?: number;
 }
 
 export interface Address {
@@ -106,6 +108,8 @@ export interface Order {
     budget?: string;
     isCustomOrder?: boolean;
   };
+  payForMeLink?: string;
+  paymentReference?: string; // Store Paystack payment reference
 }
 
 export interface TrackingStep {
@@ -123,4 +127,14 @@ export interface Notification {
   read: boolean;
   createdAt: Date;
   orderId?: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  type: 'credit' | 'debit';
+  amount: number;
+  description: string;
+  reference?: string;
+  status: 'pending' | 'completed' | 'failed';
+  createdAt: Date;
 }

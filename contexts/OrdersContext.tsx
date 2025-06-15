@@ -1,11 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Order, CartItem, Address } from '@/types';
-import { Linking } from 'react-native';
 
 interface OrdersContextType {
   orders: Order[];
-  addOrder: (items: CartItem[], deliveryAddress: Address, paymentMethod: string, specialInstructions?: string) => Promise<string>;
+  addOrder: (items: CartItem[], deliveryAddress: Address, paymentMethod: string, specialInstructions?: string, payForMeLink?: string, paymentReference?: string) => Promise<string>;
   addCustomOrder: (orderData: any) => Promise<string>;
   updateOrderStatus: (orderId: string, status: Order['status']) => void;
   getActiveOrders: () => Order[];
@@ -14,27 +13,6 @@ interface OrdersContextType {
 }
 
 const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
-
-// Email notification function for orders
-const sendOrderEmailNotification = async (type: string, orderData: any) => {
-  const subject = encodeURIComponent(`Luxuire Order ${type} - #${orderData.id}`);
-  let body = '';
-  
-  switch (type) {
-    case 'Placed':
-      body = encodeURIComponent(`New order placed:%0D%0A%0D%0AOrder ID: ${orderData.id}%0D%0ACustomer: ${orderData.customerName || 'N/A'}%0D%0ATotal: ₦${orderData.total.toLocaleString()}%0D%0AItems: ${orderData.itemCount} items%0D%0ADelivery Address: ${orderData.deliveryAddress.street}, ${orderData.deliveryAddress.city}, ${orderData.deliveryAddress.state}%0D%0APayment Method: ${orderData.paymentMethod}%0D%0AOrder Time: ${new Date().toLocaleString()}%0D%0A%0D%0ASpecial Instructions: ${orderData.specialInstructions || 'None'}`);
-      break;
-    case 'Status Update':
-      body = encodeURIComponent(`Order status updated:%0D%0A%0D%0AOrder ID: ${orderData.id}%0D%0ANew Status: ${orderData.status}%0D%0AUpdate Time: ${new Date().toLocaleString()}`);
-      break;
-    case 'Custom Order':
-      body = encodeURIComponent(`New custom basket order:%0D%0A%0D%0AOrder ID: ${orderData.id}%0D%0ACustomer: ${orderData.customerName || 'N/A'}%0D%0APhone: ${orderData.phone}%0D%0AItems: ${orderData.items}%0D%0AQuantity: ${orderData.quantity}%0D%0ADelivery: ${orderData.deliveryTime}%0D%0AAddress: ${orderData.address}%0D%0ABudget: ${orderData.budget}%0D%0AOrder Time: ${new Date().toLocaleString()}%0D%0A%0D%0ASpecial Instructions: ${orderData.specialInstructions || 'None'}`);
-      break;
-  }
-  
-  const emailUrl = `mailto:luxuireng@gmail.com?cc=support@luxuire.com&subject=${subject}&body=${body}`;
-  console.log('Order email notification:', emailUrl);
-};
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -66,7 +44,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     items: CartItem[], 
     deliveryAddress: Address, 
     paymentMethod: string,
-    specialInstructions?: string
+    specialInstructions?: string,
+    payForMeLink?: string,
+    paymentReference?: string
   ): Promise<string> => {
     const orderId = `LX${Date.now().toString().slice(-6)}`;
     
@@ -93,6 +73,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       specialInstructions,
       createdAt: new Date(),
       estimatedDelivery: getEstimatedDelivery(deliveryAddress),
+      payForMeLink,
+      paymentReference,
       trackingSteps: [
         { step: 'Order Placed', completed: true, time: new Date().toLocaleTimeString(), current: false },
         { step: 'Shopping for Items', completed: false, time: '', current: true },
@@ -105,16 +87,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     const updatedOrders = [newOrder, ...orders];
     setOrders(updatedOrders);
     await saveOrders(updatedOrders);
-    
-    // Send email notification
-    await sendOrderEmailNotification('Placed', {
-      id: orderId,
-      total,
-      itemCount: items.length,
-      deliveryAddress,
-      paymentMethod,
-      specialInstructions
-    });
     
     return orderId;
   };
@@ -159,19 +131,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setOrders(updatedOrders);
     await saveOrders(updatedOrders);
     
-    // Send email notification
-    await sendOrderEmailNotification('Custom Order', {
-      id: orderId,
-      customerName: orderData.customerName,
-      phone: orderData.phone,
-      items: orderData.itemNames,
-      quantity: orderData.quantity,
-      deliveryTime: orderData.deliveryTime,
-      address: orderData.address,
-      budget: orderData.budget,
-      specialInstructions: orderData.specialInstructions
-    });
-    
     return orderId;
   };
 
@@ -208,19 +167,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
             break;
         }
 
-        const updatedOrder = {
+        return {
           ...order,
           status,
           trackingSteps: updatedTrackingSteps,
         };
-
-        // Send email notification for status update
-        sendOrderEmailNotification('Status Update', {
-          id: orderId,
-          status
-        });
-
-        return updatedOrder;
       }
       return order;
     });
@@ -258,7 +209,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     // Other Nigerian states
     const nigerianStates = [
       'abia', 'adamawa', 'akwa ibom', 'anambra', 'bauchi', 'bayelsa', 'benue',
-      'borno', 'cross river', 'delta', 'ebonyi', 'edo', 'ekiti', 'enugu',
+      'borno',  'cross river', 'delta', 'ebonyi', 'edo', 'ekiti', 'enugu',
       'gombe', 'imo', 'jigawa', 'kaduna', 'kano', 'katsina', 'kebbi', 'kogi',
       'kwara', 'lagos', 'nasarawa', 'niger', 'ogun', 'ondo', 'osun', 'oyo',
       'plateau', 'rivers', 'sokoto', 'taraba', 'yobe', 'zamfara', 'fct'

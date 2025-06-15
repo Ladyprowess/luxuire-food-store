@@ -2,18 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Phone, MessageCircle, MapPin, Clock, Package, CircleCheck as CheckCircle, Truck, ShoppingBag } from 'lucide-react-native';
+import { ArrowLeft, Phone, MessageCircle, MapPin, Clock, Package, CheckCircle, Truck, ShoppingBag } from 'lucide-react-native';
 import { useOrders } from '@/contexts/OrdersContext';
+import { useAuth } from '@/contexts/AuthContext';
+import AdminOrderStatusUpdater from '@/components/AdminOrderStatusUpdater';
 
 export default function OrderTrackingScreen() {
   const { id } = useLocalSearchParams();
   const { getOrderById, updateOrderStatus } = useOrders();
   const [order, setOrder] = useState(getOrderById(id as string));
+  const { user } = useAuth();
 
   useEffect(() => {
     // Refresh order data when component mounts
     setOrder(getOrderById(id as string));
   }, [id]);
+
+  // Check if user is admin (simplified check for demo)
+  const isAdmin = user?.email?.includes('admin') || user?.email === 'luxuireng@gmail.com';
 
   if (!order) {
     return (
@@ -96,6 +102,21 @@ export default function OrderTrackingScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Admin Controls (only visible to admins) */}
+        {isAdmin && (
+          <View style={styles.adminSection}>
+            <Text style={styles.adminSectionTitle}>Admin Controls</Text>
+            <AdminOrderStatusUpdater 
+              orderId={order.id}
+              currentStatus={order.status}
+              onStatusUpdated={() => {
+                // Refresh order data after status update
+                setOrder(getOrderById(id as string));
+              }}
+            />
+          </View>
+        )}
 
         {/* Tracking Steps */}
         <View style={styles.trackingSection}>
@@ -313,6 +334,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 14,
     color: '#FFFFFF',
+  },
+  adminSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+    backgroundColor: '#FFF9E6',
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#FFE082',
+  },
+  adminSectionTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    color: '#FF9800',
+    marginBottom: 12,
   },
   trackingSection: {
     paddingHorizontal: 20,

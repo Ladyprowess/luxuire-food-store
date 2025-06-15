@@ -2,8 +2,15 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowLeft, User, Mail, Phone, Camera } from 'lucide-react-native';
+import { ArrowLeft, User, Mail, Phone, Camera, CreditCard } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+
+const paymentMethods = [
+  { id: 'card', name: 'Card Payment', description: 'Pay with debit/credit card via Paystack' },
+  { id: 'bank', name: 'Bank Transfer', description: 'Direct bank transfer' },
+  { id: 'ussd', name: 'USSD Payment', description: 'Pay with your phone' },
+  { id: 'cash', name: 'Cash on Delivery', description: 'Pay when you receive your order' },
+];
 
 export default function ProfileEditScreen() {
   const { user, updateUser } = useAuth();
@@ -13,6 +20,7 @@ export default function ProfileEditScreen() {
     email: user?.email || '',
     phone: user?.phone || '',
     profileImage: user?.profileImage || '',
+    preferredPaymentMethod: user?.preferredPaymentMethod || 'card',
   });
 
   const handleSave = async () => {
@@ -39,6 +47,7 @@ export default function ProfileEditScreen() {
         email: formData.email,
         phone: formData.phone,
         profileImage: formData.profileImage,
+        preferredPaymentMethod: formData.preferredPaymentMethod,
       });
 
       Alert.alert('Success', 'Profile updated successfully!', [
@@ -136,6 +145,45 @@ export default function ProfileEditScreen() {
           </View>
         </View>
 
+        {/* Payment Method Section */}
+        <View style={styles.paymentSection}>
+          <Text style={styles.sectionTitle}>Preferred Payment Method</Text>
+          
+          {paymentMethods.map((method) => (
+            <TouchableOpacity
+              key={method.id}
+              style={[
+                styles.paymentMethodCard,
+                formData.preferredPaymentMethod === method.id && styles.paymentMethodCardSelected
+              ]}
+              onPress={() => setFormData(prev => ({ ...prev, preferredPaymentMethod: method.id }))}
+            >
+              <View style={styles.paymentMethodInfo}>
+                <Text style={[
+                  styles.paymentMethodName,
+                  formData.preferredPaymentMethod === method.id && styles.paymentMethodNameSelected
+                ]}>
+                  {method.name}
+                </Text>
+                <Text style={[
+                  styles.paymentMethodDescription,
+                  formData.preferredPaymentMethod === method.id && styles.paymentMethodDescriptionSelected
+                ]}>
+                  {method.description}
+                </Text>
+              </View>
+              <View style={[
+                styles.radioButton,
+                formData.preferredPaymentMethod === method.id && styles.radioButtonSelected
+              ]} />
+            </TouchableOpacity>
+          ))}
+          
+          <Text style={styles.paymentMethodNote}>
+            This will be your default payment method for all orders
+          </Text>
+        </View>
+
         {/* Points Section */}
         <View style={styles.pointsSection}>
           <Text style={styles.pointsSectionTitle}>Referral Points</Text>
@@ -229,7 +277,7 @@ const styles = StyleSheet.create({
   },
   formSection: {
     paddingHorizontal: 20,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -248,6 +296,71 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333333',
     marginLeft: 12,
+  },
+  paymentSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 18,
+    color: '#333333',
+    marginBottom: 16,
+  },
+  paymentMethodCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8F8F8',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  paymentMethodCardSelected: {
+    backgroundColor: '#F0F7E6',
+    borderColor: '#B3C33E',
+  },
+  paymentMethodInfo: {
+    flex: 1,
+  },
+  paymentMethodName: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    color: '#333333',
+    marginBottom: 4,
+  },
+  paymentMethodNameSelected: {
+    color: '#7A9C2A',
+  },
+  paymentMethodDescription: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#666666',
+  },
+  paymentMethodDescriptionSelected: {
+    color: '#7A9C2A',
+  },
+  radioButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+  },
+  radioButtonSelected: {
+    borderColor: '#B3C33E',
+    backgroundColor: '#B3C33E',
+  },
+  paymentMethodNote: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#999999',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
   },
   pointsSection: {
     paddingHorizontal: 20,
